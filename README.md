@@ -4,7 +4,7 @@ Seminar KI - Marcel Rinder 2021
 
 ### Installation
 
-slayercuda==0.0.0 -e git+https://github.com/VertexStyle/AudioEncodingSNN.git@d224b7191ba32c4e1440f62fef85a36562faf9e0#egg=slayerloihicuda<br />
+slayercuda==0.0.0 -e git+https://github.com/bamsumit/slayerPytorch.git<br />
 slayersnn==0.0.0<br />
 deltasigma==0.2.2<br />
 PyYAML==5.4.1<br />
