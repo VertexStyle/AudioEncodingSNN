@@ -1,7 +1,6 @@
 # Audio Encoding with SNN
 Seminar KI - Marcel Rinder 2021
 
-
 ### Installation
 
 slayercuda==0.0.0 -e git+https://github.com/bamsumit/slayerPytorch.git<br />
@@ -18,3 +17,9 @@ torch==1.8.1+cu111<br />
 torchaudio==0.8.1<br />
 torchvision==0.9.1+cu111<br />
 samplerate<br />
+
+
+### Run
+
+Simply run src/main.py
+Configure parameters in src/main.py to run with different pretrained networks / encoders
