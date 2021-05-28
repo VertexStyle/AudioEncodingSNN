@@ -22,4 +22,4 @@ samplerate<br />
 ### Run
 
 Simply run src/main.py.<br />
-Configure parameters in src/main.py to run with different pretrained networks / encoders
+Configure parameters in src/main.py to run with different encoders or pretrained network checkpoints (stored in save/net/slayer/)
