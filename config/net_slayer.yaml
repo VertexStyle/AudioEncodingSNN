@@ -1,0 +1,25 @@
+simulation:
+    Ts: 1.0                 # sampling time (ms)
+    tSample: 2500000          # time length of sample (ms)
+
+neuron:
+    type:       LOIHI       # neuron type
+    vThMant:    80          # neuron threshold mantessa
+    vDecay:     128         # compartment voltage decay
+    iDecay:     1024        # compartment current decay
+    refDelay:   1           # refractory delay
+    wgtExp:     0           # weight exponent
+    tauRho:     1           # spike function derivative time constant (relative to theta)
+    scaleRho:   1           # spike function derivative scale factor
+
+hidden:                     # Note: input and output layer are configured automatically
+    - { dim: 128 }
+    #- { dim: 256 }
+    #- { dim: 128 }
+
+training:
+    learningRate: 0.01
+    amsgrad: True
+    timeBatchSize: 500
+    error:
+        type: SpikeTime  #ProbSpikes #NumSpikes #SpikeTime

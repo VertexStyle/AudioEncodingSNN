@@ -1,0 +1,12 @@
+simulation:
+    Ts: 1.0                 # sampling time (ms)
+    tSample: 128000         # time length of sample (ms)
+
+layer:                      # Note: input and output layers are configured automatically
+    hiddenDim: 128
+    recurrDim: 64
+
+training:
+    learningRate: 0.01
+    amsgrad: True
+    batchSize: 8

@@ -1,0 +1,23 @@
+input:
+  audioPath:      '../res/audio/input/test1.wav'
+  play:           True            # Play audio results after runtime
+  volume:         50000           # Audio volume for playback
+  mono:           True            # Convert to mono (stereo currently not supported)
+  bitDepth:       16              # Bitdepth of the given audiofile
+  oversampling:   64              # Oversampling rate (only used for 'DELTASIGMA' strategy)
+
+codec:
+  strategy:       'DELTASIGMA'    # Encoding strategy that is used ['GRIDCELL', 'WBINARY', 'BINARY', 'DELTASIGMA']
+
+network:
+  network:        'SLAYER'        # Network architecture that is used ['SLAYER', 'LSTM']
+  paramPath:      '../config/'    # Main folder where the network parameters are located
+
+  activate:       True            # Set to False to run the encoding-decoding process without a network in between
+  training:       False           # Train a new network. Old checkpoint file will be overwritten if saveVersion is not increased
+  visualize:      True            # Show several visualizations during runtime
+
+  # Network Save
+  activateSave:   True
+  saveVersion:    1               # Version of the network that will appear in the saved file
+  savePath:       '../save/net/'  # Main folder where saved network files are saved in
