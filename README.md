@@ -1,7 +1,7 @@
 # Audio Encoding with SNN
 Seminar KI - Marcel Rinder 2021
 
-### Installation
+### Install
 
 slayercuda==0.0.0 -e git+https://github.com/bamsumit/slayerPytorch.git<br />
 slayersnn==0.0.0<br />
