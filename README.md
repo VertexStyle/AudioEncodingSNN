@@ -18,8 +18,9 @@ torchaudio==0.8.1<br />
 torchvision==0.9.1+cu111<br />
 samplerate<br />
 
-
 ### Run
-
 Simply run src/main.py.<br />
-Configure parameters in src/main.py to run with different encoders or pretrained network checkpoints (stored in save/net/slayer/)
+Configure parameters in /src/main.py to run with different encoders or pretrained network checkpoints (stored in save/net/slayer/)
+
+### Benchmarks
+To reproduce the results shown in the paper you can run the files located in /src/benchmark/
