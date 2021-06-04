@@ -11,6 +11,10 @@ class AudioPipeline(object):
         self.training_plot = None
         self.net = None
 
+        self.logpath = None
+        self.title = ''
+        self.subtitle = ''
+
     @abstractmethod
     def train(self, input_vectors, desire_vectors, n_epochs=10000, checkpoint=500, save_path=None, input_format='Channel-Time-Neuron'):
         pass
@@ -28,7 +32,11 @@ class AudioPipeline(object):
         # Load network parameters
         self.net.load_state_dict(torch.load(file_path))
 
-    def visualize_training(self, visualize=True):
+    def visualize_training(self, visualize=True, logpath=None, title='Training Loss', subtitle=''):
+        self.title = title
+        self.subtitle = subtitle
+        if logpath:
+            self.logpath = logpath
         if visualize:
             plt.ion()
 
@@ -57,7 +65,7 @@ class AudioPipeline(object):
         plt.title('Training Loss')
         plt.xlabel('time')
         plt.ylabel('neuron ID')
-        plt.legend()
+        plt.legend(loc='upper right')
 
         if stats:
             plt.figure(2)
@@ -70,6 +78,7 @@ class AudioPipeline(object):
 
     def load_features(self, inputs, desired=None, reorder=(0, 1, 2), batches=None):
         inp_reorder = np.moveaxis(np.array(inputs), (0, 1, 2), reorder)
+        
         inp_tensor, inp_event = self.get_tensor(inp_reorder, batches=batches)
         #showTD(event)
 
@@ -88,13 +97,19 @@ class AudioPipeline(object):
                 plt.plot(acc_log, label='Accuracy')
             plt.legend()
 
-            plt.title('Training Loss')
-            plt.xlabel('Time')
+            plt.title(self.subtitle)
+            plt.suptitle(self.title, fontsize=15, y=1)
+            plt.xlabel('Epoch')
             plt.ylabel('Loss')
 
             plt.draw()
+            if self.logpath:
+                plt.savefig(self.logpath)
+                with open(self.logpath + '.txt', 'w') as f:
+                    f.write('\n'.join((str(v) for v in loss_log)))
             plt.pause(0.0001)
             plt.clf()
+
 
     @staticmethod
     def get_input_order(input_format):

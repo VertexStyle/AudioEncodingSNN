@@ -47,7 +47,7 @@ class SLAYERAudioPipeline(AudioPipeline):
     net: SLAYER
     error: Module
 
-    def __init__(self, config_path=None, input_size=None, output_size=None, samplerate=None, mono=False):
+    def __init__(self, config_path=None, input_size=None, output_size=None, samplerate=None, mono=False, layer_sizes=None):
         super().__init__()
 
         # CUDA Device
@@ -59,6 +59,9 @@ class SLAYERAudioPipeline(AudioPipeline):
         if input_size and output_size and samplerate and config_path:
             # Slayer Parameters
             self.params = snn.params(config_path)
+            if layer_sizes:
+                for lyr_i, lyr in enumerate(layer_sizes):
+                    self.params['hidden'][lyr_i]['dim'] = lyr
 
             # Initialise Network
             channels = 1 if mono else 2
@@ -67,19 +70,30 @@ class SLAYERAudioPipeline(AudioPipeline):
             self.net = SLAYER(self.inp_dim, self.out_dim, self.params).to(self.device)
             self.error = snn.loss(self.params, SpikeLayer).to(self.device)
             self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.params['training']['learningRate'],
-                                              amsgrad=self.params['training']['amsgrad'])       # TODO: try with SGD!!!
+                                              amsgrad=self.params['training']['amsgrad'])
 
             self.sample_time = self.params['simulation']['Ts']
-            self.sample_time_length = int(self.params['simulation']['tSample'] / self.params['simulation']['Ts'])
+            if self.params['simulation']['tSample'] > 0:
+                self.sample_time_length = int(self.params['simulation']['tSample'] / self.params['simulation']['Ts'])
+            else:
+                self.sample_time_length = None
 
             self.training_plot = None
 
     def train(self, input_vectors, desire_vectors, n_epochs=10000, checkpoint=500, save_path=None, input_format='Channel-Time-Neuron'):
         # Prepare Feature Vectors           TODO: tensor definition inside training???
         order = self.get_input_order(input_format)
-        input_tensor, desire_tensor = self.load_features(input_vectors, desire_vectors, reorder=order,
-                                                         batches=self.params['training']['timeBatchSize'])
+        time_samples = input_vectors.shape[order.index(2)]
+        if not self.sample_time_length:
+            self.params['simulation']['tSample'] = time_samples
+            self.sample_time_length = int(time_samples / self.params['simulation']['Ts'])
 
+        batch_size = self.params['training']['timeBatchSize']
+        if batch_size == -1:
+            batch_size = None
+        input_tensor, desire_tensor = self.load_features(input_vectors, desire_vectors, reorder=order,
+                                                         batches=batch_size)
+        print('>>> Tensor Shape:', input_tensor.shape, end='')
         # Run Training
         stats = LearningStats()
         start_time = time.time()
@@ -103,7 +117,7 @@ class SLAYERAudioPipeline(AudioPipeline):
                 print(f"Time elapsed: {round(elapsed - run_time, 2)} seconds")
                 run_time = elapsed
 
-                self.update_training_plot(stats.training.lossLog)  # , stats.training.accuracyLog)
+                self.update_training_plot(stats.training.lossLog) #, stats.training.accuracyLog)
 
             if save_path and stats.training.bestLoss:
                 torch.save(self.net.state_dict(), save_path)
@@ -115,12 +129,25 @@ class SLAYERAudioPipeline(AudioPipeline):
             errors.backward()
             self.optimizer.step()
 
-        print(f"\n--- Training took {round((time.time() - start_time)/60, 2)} minutes ---")
+        print(f"\n>>> Training took {round((time.time() - start_time)/60, 2)} minutes")
 
-    def test(self, input_vector, desired_vector=None, input_format='Channel-Time-Neuron', plot=False):
+    def test(self, input_vectors, desired_vectors=None, input_format='Channel-Time-Neuron', plot=False, logpath=None, use_batches=False):
         # Prepare Feature Vectors
         order = self.get_input_order(input_format)
-        input_tensor, desire_tensor = self.load_features(input_vector, desired_vector, reorder=order)
+        time_samples = input_vectors.shape[order.index(2)]
+        #print(order, input_vectors.shape)
+        if not self.sample_time_length:
+            self.params['simulation']['tSample'] = time_samples
+            self.sample_time_length = int(time_samples / self.params['simulation']['Ts'])
+        
+        if use_batches:
+            batch_size = self.params['training']['timeBatchSize']
+            if batch_size == -1:
+               batch_size = None
+        else:
+            batch_size = None
+        input_tensor, desire_tensor = self.load_features(input_vectors, desired_vectors, reorder=order, batches=batch_size)
+        print('>>> Tensor Shape:', input_tensor.shape, end='')
 
         # Run test
         prediction_tensor = self.net.forward(input_tensor)
@@ -130,13 +157,14 @@ class SLAYERAudioPipeline(AudioPipeline):
         prediction_raw = prediction_tensor.cpu().data.numpy()
         prediction = np.array(np.concatenate(prediction_raw, axis=1), dtype=np.int8)
         prediction = np.concatenate(prediction, axis=1)
+
         return np.moveaxis(prediction, order, (0, 1, 2))
 
     def get_tensor(self, inputs, batches=None):
         """
         Slayer Documentation: https://bamsumit.github.io/slayerPytorch/build/html/slayer.html
         Format of input vectors is   (Channel, Amplitude, Time)
-        Format of tensor needs to be (Batch, Channel, Height, Width, Time) -> (Batch, Channel, Amplitude, 1, Time)
+        Format of tensor needs to be (Batch, Channel, Height, Width, Time)
         Number of neurons = Channel * Height * Width
         """
         if not batches:
@@ -149,9 +177,8 @@ class SLAYERAudioPipeline(AudioPipeline):
 
         # Reshape tensor to ignore spatial dimensions (Height, Width). Time will be split into batches. All neurons will be in channel dimension.
         tensor = tensor.reshape((1, inputs.shape[1], 1, -1, batches))   # split time into batches
-        tensor = tensor.swapaxes(0, 3)                                  # swap axes so batches are at the right position
+        tensor = tensor.swapaxes(0, 3)                                  # swap axes so batches are in the right position
         spike_tensor = tensor.to(self.device)                           # transfer to GPU
-
         return spike_tensor, event
 
 

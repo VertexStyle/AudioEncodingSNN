@@ -8,13 +8,13 @@ from src.codec.modulation import Modulation
 
 
 class BinaryVectorModulation(Modulation):
-    def __init__(self, bit_depth, sign=('0', '1'), weighting=False):
+    def __init__(self, bit_depth, sign=('0', '1'), weighted=False):
         super().__init__()
 
         self.bit_depth = bit_depth
         self.scaling = int(2**(bit_depth-1))
         self.sign = sign
-        self.weighting = weighting
+        self.weighting = weighted
 
     def value2vector(self, value, flatten=False, force_depth=None):
         if hasattr(value, "__len__"):
@@ -60,7 +60,7 @@ class BinaryVectorModulation(Modulation):
                     bit = max(set(bitrepeat), key=bitrepeat.count)
                     bitvector.append(bit)
                     offset += repeat
-                    print(repeat, bitrepeat, bit)
+                    #print(repeat, bitrepeat, bit)
 
             signbit = 1 if bitvector.pop(0) == int(self.sign[0]) else -1
             return signbit * int(''.join(str(bit) for bit in bitvector), 2)
@@ -110,3 +110,5 @@ if __name__ == '__main__':
 
     sig = bind.get_significance()
     print("Significance:", sig)
+    
+    

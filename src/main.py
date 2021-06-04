@@ -16,22 +16,22 @@ from visualize.modulation_visualize import ModulationVisualizer
 def main():
     # INPUT
     input_signal = PulseCodeModulation().from_file(audiopath, dtype=f'int{bit_depth}')
+    #input_signal = PulseCodeModulation().from_array([[int(np.sin(x*0.1)*(2**16/2)) for x in range(5000)]], input_signal.samplerate)
 
     # ENCODING
     if strategy.lower() == 'binary':
-        codec = BinaryVectorModulation(bit_depth+1, weighting=False)            # TODO: +1 temporary!
+        codec = BinaryVectorModulation(bit_depth, weighted=False)
     elif strategy.lower() == 'wbinary':
-        codec = BinaryVectorModulation(bit_depth, weighting=True)
+        codec = BinaryVectorModulation(bit_depth, weighted=True)
     elif strategy.lower() == 'deltasigma':
         input_signal.oversample(OSR=oversampling)
         codec = PulseDensityModulation(order=1, OSR=oversampling)
     elif strategy.lower() == 'gridcell':
         codec = GridCellModulation(2**bit_depth, seed=seed)
-        codec.visualize_grid_cells()
         if new_training:
-            codec.new_modules(module_count=5, cells_per_module=20).save_modules(gridcell_path)
+            codec.new_modules(module_count=60, cells_per_module=10).save_modules(gridcell_path)
         else:
-            codec.new_modules(module_count=5, cells_per_module=20)
+            codec.load_modules_from_file(gridcell_path)
     else: return
 
     # FEATURE VECTOR (binary / deltasigma / gridcell)
@@ -65,13 +65,19 @@ def main():
         output_vectors = input_vectors
 
     output_waveform = codec.vector2value(output_vectors)
-    output_signal = PulseCodeModulation().from_array(output_waveform, input_signal.samplerate, array_format='Channel-Amplitude')
+    output_signal = PulseCodeModulation().from_array(output_waveform, input_signal.samplerate, array_format='Channel-Amplitude')        # TODO: PDM has wrong samplerate here!
 
     if visualize_result:
-        plot = ModulationVisualizer(title='Test Waveform', number_of_plots=2)
-        plot.plot_pcm(input_signal, axidx=0, title='Input Signal')
-        #plot.plot_pdm(codec, axidx=1)
-        plot.plot_pcm(output_signal, axidx=1, title='Decoded Signal')
+        if strategy.lower() == 'deltasigma':
+            plot = ModulationVisualizer(title='Test Waveform', number_of_plots=3)
+            plot.plot_pcm(input_signal, axidx=0, title='Input Signal')
+            plot.plot_pdm(codec, axidx=1)
+            plot.plot_pdm(codec + 3, axidx=1)
+            plot.plot_pcm(output_signal, axidx=2, title='Decoded Signal')
+        else:
+            plot = ModulationVisualizer(title='Test Waveform', number_of_plots=2)
+            plot.plot_pcm(input_signal, axidx=0, title='Input Signal')
+            plot.plot_pcm(output_signal, axidx=1, title='Decoded Signal')
         plot.show()
 
     print('\nPlayback...')
@@ -93,17 +99,17 @@ if __name__ == '__main__':
     seed = 0
 
     save_name = strategy.lower()
-    save_version = '005'
+    save_version = '001'
     config_path = f'../config/net_{network.lower()}.yaml'
 
-    audiopath = '../res/audio/input/test1.wav'
+    audiopath = '../res/audio/input/speech1.wav'
     volume = 50000
     bit_depth = 16
     oversampling = 32       # for Delta Sigma Modulation only
     mono = True
 
     activate_net = True
-    new_training = False
+    new_training = True
     training_path = f'../save/net/{network.lower()}/{save_name}-{save_version}-{"mono" if mono else "stereo"}.pt'
     new_gridcells = False
     gridcell_path = f'../save/grid/gcmodule-{save_version}-{"mono" if mono else "stereo"}.csv'

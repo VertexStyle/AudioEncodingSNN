@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
@@ -20,12 +21,24 @@ class PulseCodeModulation(object):
         self.strategy = os_strategy
         self.is_mono = False
 
-    def from_file(self, path, dtype='float64'):
+    def from_file(self, path, dtype='float64', start=None, end=None):
         self.original_waveform, self.samplerate = sf.read(path, dtype=dtype)
+        self.original_waveform = self.original_waveform[start:end]
+
         self.librosa_waveform, self.librosa_samplerate = librosa.load(path)
+        osr_factor = self.librosa_samplerate / self.samplerate
+        if start: start = int(start * osr_factor)
+        if end: end = int(end * osr_factor)
+        self.librosa_waveform = self.librosa_waveform[start:end]
+
         self.check_mono(self.original_waveform)
         self.oversample()
         return self
+
+    def to_file(self, path, filename):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        sf.write(f'{path}{filename}.wav', np.array(self.waveform, dtype=np.int16), self.samplerate)
 
     def from_array(self, wave, samplerate, array_format='Channel-Amplitude'):
         wave = np.array(wave)
@@ -38,9 +51,10 @@ class PulseCodeModulation(object):
             wave = self.float2int(wave)
 
         self.original_waveform = wave
+        self.samplerate = samplerate
+        # TODO: self.librosa_waveform, self.librosa_samplerate = librosa.load(path)
         self.check_mono(self.original_waveform)
         self.original_samplerate = samplerate
-        self.samplerate = samplerate
         self.oversample()
         return self
 
@@ -66,7 +80,7 @@ class PulseCodeModulation(object):
         print(message)
         sd.play(audio, blocking=blocking, samplerate=self.original_samplerate)         # Playback
 
-    def get_waveform(self, wave_format='Channel-Amplitude', mono=False):
+    def get_waveform(self, wave_format='Channel-Amplitude', mono=True):
         # ensure correct format
         reorder = tuple(int(pos) for pos in re.split(r'\D+', wave_format.upper().replace('CHANNEL', '1').replace('AMPLITUDE', '0')))
         wave = np.moveaxis(np.array(self.waveform), (0, 1), reorder)
@@ -84,13 +98,16 @@ class PulseCodeModulation(object):
         return np.array(wave)
 
     def check_mono(self, wave):
-        if len(wave[0]) == 1:
+        try:
+            if len(wave[0]) == 1:
+                self.is_mono = True
+            else:
+                self.is_mono = False
+        except TypeError:
             self.is_mono = True
-        else:
-            self.is_mono = False
         return self.is_mono
 
-    def oversample(self, OSR=None):
+    def oversample(self, OSR=None, dtype='float64'):
         if not OSR:
             OSR = self.OSR
         else:
@@ -114,10 +131,11 @@ class PulseCodeModulation(object):
             elif self.strategy == 7:
                 res_type = 'sinc_fastest'  # fast
             else:
-                res_type = 'kaiser_fast'
-
-            oversampled_wave = librosa.resample(self.librosa_waveform, self.librosa_samplerate, self.librosa_samplerate * OSR, res_type=res_type)
-            #int_wave = self.float2int(oversampled_wave)
+                res_type = 'linear'
+            osr_factor = self.samplerate // self.librosa_samplerate     # fix inconsistencies with samplerates
+            oversampled_wave = librosa.resample(self.librosa_waveform, self.librosa_samplerate, self.librosa_samplerate * osr_factor * self.OSR, res_type=res_type)
+            if dtype == 'int16':
+                oversampled_wave = self.float2int(oversampled_wave)
             self.waveform = np.expand_dims(oversampled_wave, axis=0).T
             self.samplerate = self.librosa_samplerate
         else:

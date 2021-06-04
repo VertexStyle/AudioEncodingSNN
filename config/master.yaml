@@ -1,3 +1,5 @@
+# NOT FUNCTIONAL CURRENTLY
+
 input:
   audioPath:      '../res/audio/input/test1.wav'
   play:           True            # Play audio results after runtime

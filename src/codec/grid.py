@@ -10,6 +10,7 @@ import operator as op
 import csv
 
 from src.codec.modulation import Modulation
+from src.codec.pcm import PulseCodeModulation
 
 
 class GridCellModulation(Modulation):
@@ -37,6 +38,11 @@ class GridCellModulation(Modulation):
 
         self.plot = True
 
+        self.last_decoded_value = None
+        self.last_decoded_slope = None
+        self.mean_slope = 0
+        self.repairs = 0
+
     def value2vector(self, value, flatten=False):
         """
         Converts an integer value to a grid cell vector representation.
@@ -57,7 +63,7 @@ class GridCellModulation(Modulation):
                     continue
             return np.array(gcvec, dtype=np.int8)
 
-    def vector2value(self, vector, interval=None, find_all=False, lookup=True, plot=False):
+    def vector2value(self, vector, interval=None, find_all=False, lookup=True, plot=False, max_slope_change=1000):
         """
         Converts a grid cell vector representation back into an integer value
         """
@@ -65,7 +71,7 @@ class GridCellModulation(Modulation):
             self.plot = False
 
         if hasattr(vector[0], '__len__'):
-            return [self.vector2value(bit) for bit in vector]
+            return [self.vector2value(bit, plot=plot) for bit in vector]
 
         if not interval:
             interval = self.interval
@@ -105,31 +111,80 @@ class GridCellModulation(Modulation):
         if self.plot:
             sort_val = list(reversed(np.sort(active_values)))
             plt.plot(sort_val)
-            plt.fill([0] + sort_val, alpha=0.5)
+            plt.fill([0] + sort_val + [0], alpha=0.5)
             plt.show()
             self.plot = False
 
         if find_all:
             candidates = np.argwhere(active_values == np.max(active_values))
-            return np.array(op.itemgetter(*candidates)(field_values)).flatten()
-
+            decoded = np.array(op.itemgetter(*candidates)(field_values)).flatten()
         else:
             candidate = np.argmax(active_values)
-            return field_values[candidate]
+            decoded = field_values[candidate]
+
+            # if the slope changes too drastically pick the last one to prevent spikes
+            if max_slope_change:
+                if self.last_decoded_value is not None and self.last_decoded_slope is not None:
+                    current_slope = decoded - self.last_decoded_value
+                    slope_difference = abs(current_slope - self.last_decoded_slope)
+                    mean_slope = self.mean_slope / (self.repairs + 1)
+
+                    theta = 1 / (self.repairs+1)
+                    if slope_difference > mean_slope * 2:
+                        decoded = int(theta * (self.last_decoded_value + np.ceil(self.last_decoded_slope)) + (1-theta) * decoded)
+                        self.repairs += 1
+                    else:
+                        # found a correct value
+                        self.last_decoded_slope = current_slope
+                        self.repairs = 0
+                        self.mean_slope = 0
+
+                    offset = 0.2
+                    self.mean_slope += (theta-offset) * mean_slope + (1+offset-theta) * slope_difference
+                    self.last_decoded_value = decoded
+
+                elif self.last_decoded_value is not None:
+                    self.last_decoded_slope = decoded - self.last_decoded_value
+                    self.last_decoded_value = decoded
+                else:
+                    self.last_decoded_slope = 0
+                    self.last_decoded_value = decoded
+
+        return decoded
+
 
     def get_vector_size(self):
         return self.get_cell_count()
 
+    def new_modules_NEW(self, module_count=5, cells_per_module=20):
+        self.module_count = module_count
+        self.cells_per_module = cells_per_module
+
+        for _ in range(module_count):
+            radius = min(np.abs(np.random.normal(0,self.scaling/64) + self.scaling/64), self.scaling)
+            #print(radius)
+            offset = np.random.randint(0, cells_per_module * radius)
+            self.grid_cell_modules.append(GridCellModule(cell_count=cells_per_module, cell_radius=radius, offset=offset))
+            # So modules can be saved later
+            self.module_config.append((module_count, cells_per_module, radius, offset))
+        return self
 
     def new_modules(self, module_count=5, cells_per_module=20):
         self.module_count = module_count
         self.cells_per_module = cells_per_module
 
+        radius_picker = self.scaling // 2
+        divisor = 0.3
         for _ in range(module_count):
-            radius = np.random.randint(1, 64)
+            radius_picker = radius_picker // min(2, 1 + divisor)
+            if radius_picker <= 16:
+                radius_picker = self.scaling // 2
+                divisor = 0.3
+            else:
+                divisor *= 1.1
+            radius = np.random.randint(1, radius_picker)
             offset = np.random.randint(0, cells_per_module * radius)
             self.grid_cell_modules.append(GridCellModule(cell_count=cells_per_module, cell_radius=radius, offset=offset))
-
             # So modules can be saved later
             self.module_config.append((module_count, cells_per_module, radius, offset))
         return self
@@ -155,11 +210,11 @@ class GridCellModulation(Modulation):
             self.module_config = config
 
         self.module_count = self.module_config[0][0]
+        self.cells_per_module = self.module_config[0][1]
         for mdl_data in self.module_config:
-            cells_per_module = mdl_data[1]
             radius = mdl_data[2]
             offset = mdl_data[3]
-            self.grid_cell_modules.append(GridCellModule(cell_count=cells_per_module, cell_radius=radius, offset=offset))
+            self.grid_cell_modules.append(GridCellModule(cell_count=self.cells_per_module, cell_radius=radius, offset=offset))
         return self
 
     def get_cell_count(self):
@@ -300,20 +355,30 @@ if __name__ == '__main__':
         plt.show()
 
     def example():
-        #gcm = GridCellModulation(vector_size=2 ** 16, seed=0).new_modules(module_count=50, cells_per_module=20)
-        space = 25
+        pnoise = 0.3
+        bit_depth = 16
+        size = 2**bit_depth
+        audiopath = '../../res/audio/input/test1.wav'
 
-        gcm = GridCellModulation(interval=(-space,space+1), seed=None).load_modules_from_config([(4,6,7,-9),(4,6,2,4),(4,6,13,14),(4,6,1,2)])
+        gcm = GridCellModulation(vector_size=size, seed=0).new_modules(module_count=60, cells_per_module=10)
+
+        #space = 25
+        #gcm = GridCellModulation(interval=(-space,space+1), seed=None).load_modules_from_config([(4,6,7,-9),(4,6,2,4),(4,6,13,14),(4,6,1,2)])
 
         gcm.visualize_grid_cells()
 
-        val = [[int(np.sin(x*0.1)*space) for x in range(500)]]
+        #val = [[int(np.sin(x*0.1)*(size/2)) for x in range(500)]]
+        val = PulseCodeModulation().from_file(audiopath, dtype=f'int{bit_depth}').get_waveform(wave_format='Channel-Amplitude', mono=True)[:,5000:5500]
         print("In-Value:", val)
 
-        vec = gcm.value2vector(val, flatten=False)
-        #print("Vector:", vec)
 
-        dec = gcm.vector2value(vec, plot=True)
+        vec = gcm.value2vector(val, flatten=False)
+        #print("Vector:", list(vec[0]))
+
+        noise = np.random.choice([0, 1], vec.shape, p=[1 - pnoise, pnoise])
+        noise_vec = np.logical_xor(vec, noise)
+
+        dec = gcm.vector2value(noise_vec, plot=True)
         print("Out-Value:", dec)
 
         plt.matshow(vec[0].T, cmap='binary')
@@ -323,9 +388,21 @@ if __name__ == '__main__':
 
         plt.plot(val[0], label='Truth')
         plt.plot(dec[0], label='Decode')
+        plt.title(f'Noise: {pnoise}, Modules: {gcm.module_count}, Cells per Module: {gcm.cells_per_module}')
         plt.legend()
         plt.show()
 
-
-    example()
+    def distribution_normal_test():
+        from collections import defaultdict
+        import matplotlib.pyplot as plt
+        values = defaultdict(float)
+        scaling = 2 ** 16
+        for i in range(100000):
+            value = int((min(np.abs(np.random.normal(scaling / 16, scaling / 16)), scaling)))
+            values[value] += 1
+        plt.bar(values.keys(), values.values())
+        plt.show()
+    
+    #distribution_normal_test()
+    #example()
     #optimize_plot()
